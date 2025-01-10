@@ -1,5 +1,6 @@
-from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QLabel, QVBoxLayout, QWidget
-from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QLabel, QVBoxLayout, QWidget, QRubberBand
+from PySide6.QtCore import Qt, QRect, QPoint
+from PySide6.QtGui import QGuiApplication
 
 class RiveraApp(QMainWindow):
     def __init__(self):
@@ -28,9 +29,37 @@ class RiveraApp(QMainWindow):
         central_widget.setLayout(layout)
         self.setCentralWidget(central_widget)
 
+        # Variables for frame selection
+        self.origin = QPoint()
+        self.rubber_band = None
+
     def start_screen_reader(self):
-        # Placeholder for the screen reader functionality
-        self.welcome_label.setText("Screen Reader Started! (Placeholder)")
+        self.welcome_label.setText("Select a screen area to read!")
+        self.setWindowOpacity(0.5)  # Make the window semi-transparent for clarity
+        self.grabMouse()  # Start capturing mouse events
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.origin = event.globalPos()
+            self.rubber_band = QRubberBand(QRubberBand.Rectangle, self)
+            self.rubber_band.setGeometry(QRect(self.origin, QSize(1, 1)))
+            self.rubber_band.show()
+
+    def mouseMoveEvent(self, event):
+        if self.rubber_band:
+            self.rubber_band.setGeometry(QRect(self.origin, event.globalPos()).normalized())
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton and self.rubber_band:
+            selected_area = self.rubber_band.geometry()
+            self.rubber_band.hide()
+            self.rubber_band.deleteLater()
+            self.rubber_band = None
+            self.releaseMouse()
+            self.setWindowOpacity(1.0)  # Restore window opacity
+
+            # Placeholder for OCR functionality
+            self.welcome_label.setText(f"Selected area: {selected_area}")
 
 if __name__ == "__main__":
     app = QApplication([])
