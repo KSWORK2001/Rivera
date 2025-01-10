@@ -1,6 +1,6 @@
-from PySide6.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWidget, QRubberBand, QPushButton
+from PySide6.QtWidgets import QApplication, QMainWindow, QLabel, QVBoxLayout, QWidget, QRubberBand, QPushButton, QHBoxLayout
 from PySide6.QtCore import Qt, QRect, QPoint, QSize
-from PySide6.QtGui import QGuiApplication, QPixmap, QIcon, QPainter
+from PySide6.QtGui import QGuiApplication, QPixmap, QIcon, QPainter, QCursor
 from pytesseract import pytesseract
 from PIL import Image
 import os
@@ -34,17 +34,17 @@ class SnippingTool(QWidget):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            self.origin = event.globalPos()
-            self.rubber_band.setGeometry(QRect(self.origin, QSize()))
+            self.origin = QCursor.pos()  # Use QCursor.pos() instead of globalPos()
+            self.rubber_band.setGeometry(QRect(self.origin, QSize()))  # Set initial size to 0
             self.rubber_band.show()
 
     def mouseMoveEvent(self, event):
         if self.rubber_band:
-            self.rubber_band.setGeometry(QRect(self.origin, event.globalPos()).normalized())
+            self.rubber_band.setGeometry(QRect(self.origin, QCursor.pos()).normalized())  # Use QCursor.pos() instead of globalPos()
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
-            selected_geometry = QRect(self.mapToGlobal(self.origin), self.mapToGlobal(event.globalPos()))
+            selected_geometry = QRect(self.origin, QCursor.pos())
             self.rubber_band.hide()
             self.close()
             self.parent().process_snip(selected_geometry)
@@ -60,16 +60,20 @@ class RiveraApp(QMainWindow):
         if os.path.exists(logo_path):
             self.setWindowIcon(QIcon(logo_path))
 
-        self.setFixedSize(400, 300)
+        # Set the size of the window to be larger
+        self.setFixedSize(1000, 600)  # Increased window size for more room
 
         # Central widget and layout
         central_widget = QWidget()
-        layout = QVBoxLayout()
+        main_layout = QHBoxLayout()  # Horizontal layout to split the screen
+
+        # Left side layout (for text and buttons)
+        left_layout = QVBoxLayout()
 
         # Welcome Label
         self.welcome_label = QLabel("Welcome to Rivera!", alignment=Qt.AlignCenter)
         self.welcome_label.setStyleSheet("font-size: 18px; font-weight: bold;")
-        layout.addWidget(self.welcome_label)
+        left_layout.addWidget(self.welcome_label)
 
         # Start Rivera Button
         self.start_button = QPushButton("Start Rivera")
@@ -77,11 +81,25 @@ class RiveraApp(QMainWindow):
             "background-color: #0078D7; color: white; font-size: 16px; padding: 10px; border-radius: 5px;"
         )
         self.start_button.clicked.connect(self.start_snipping)
-        layout.addWidget(self.start_button, alignment=Qt.AlignCenter)
+        left_layout.addWidget(self.start_button, alignment=Qt.AlignCenter)
 
-        # Set layout
-        central_widget.setLayout(layout)
+        # Right side layout (for screenshot display)
+        self.screenshot_label = QLabel()
+        self.screenshot_label.setAlignment(Qt.AlignCenter)
+        self.screenshot_label.setStyleSheet("background-color: #f0f0f0;")  # Light gray background for the screenshot
+
+        # Set fixed width for the screenshot label to always take up the right half of the screen
+        self.screenshot_label.setFixedWidth(self.width() // 2)
+
+        main_layout.addLayout(left_layout)
+        main_layout.addWidget(self.screenshot_label)
+
+        # Set the central widget and main layout
+        central_widget.setLayout(main_layout)
         self.setCentralWidget(central_widget)
+
+        # Store the screenshot path
+        self.screenshot_path = None
 
     def start_snipping(self):
         self.welcome_label.setText("Select a screen area to read!")
@@ -97,8 +115,20 @@ class RiveraApp(QMainWindow):
         screenshot_path = os.path.join(os.getcwd(), "selected_area.png")
         screenshot.save(screenshot_path)
 
+        # Display the screenshot on the right side
+        self.display_screenshot(screenshot_path)
+
         # Use OCR to extract text from the screenshot
         self.extract_text_from_image(screenshot_path)
+
+    def display_screenshot(self, screenshot_path):
+        # Store the screenshot path to reuse for selecting new areas
+        self.screenshot_path = screenshot_path
+
+        # Display the original or selected screenshot on the right side
+        pixmap = QPixmap(screenshot_path)
+        pixmap = pixmap.scaled(self.screenshot_label.size(), Qt.AspectRatioMode.KeepAspectRatio)  # Scale to fit
+        self.screenshot_label.setPixmap(pixmap)
 
     def extract_text_from_image(self, image_path):
         try:
