@@ -8,49 +8,66 @@ import sys
 
 
 class SnippingTool(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent, pixmap):
         super().__init__(parent)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setCursor(Qt.CrossCursor)
-        self.setWindowState(Qt.WindowFullScreen)
+        self.parent = parent
 
         self.origin = QPoint()
         self.rubber_band = QRubberBand(QRubberBand.Rectangle, self)
-        self.full_screen_pixmap = None
+        self.pixmap = pixmap
+        self.scaled_pixmap = None
+        self.display_area = QRect()
 
-    def set_background_screenshot(self):
-        """Capture and set the current screen as a background image."""
-        screen = QGuiApplication.primaryScreen()
-        screenshot = screen.grabWindow(0)
-        self.full_screen_pixmap = screenshot
+    def resizeEvent(self, event):
+        """Scale the pixmap to fit the parent label."""
+        self.scaled_pixmap = self.pixmap.scaled(
+            self.parent.screenshot_label.size(), Qt.AspectRatioMode.KeepAspectRatio
+        )
+        label_geometry = self.parent.screenshot_label.geometry()
+        self.display_area = QRect(label_geometry.topLeft(), self.scaled_pixmap.size())
+        self.move(label_geometry.topLeft())
+        self.resize(self.scaled_pixmap.size())
 
     def paintEvent(self, event):
-        """Draw the semi-transparent screenshot as the background."""
-        if self.full_screen_pixmap:
+        """Draw the pixmap on the widget."""
+        if self.scaled_pixmap:
             painter = QPainter(self)
-            painter.setOpacity(0.6)
-            painter.drawPixmap(self.rect(), self.full_screen_pixmap)
+            painter.drawPixmap(self.rect(), self.scaled_pixmap)
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.origin = QCursor.pos()  # Use QCursor.pos() instead of globalPos()
-            self.rubber_band.setGeometry(QRect(self.origin, QSize()))  # Set initial size to 0
+        if event.button() == Qt.LeftButton and self.display_area.contains(event.pos()):
+            self.origin = event.pos()
+            self.rubber_band.setGeometry(QRect(self.origin, QSize()))
             self.rubber_band.show()
 
     def mouseMoveEvent(self, event):
-        if self.rubber_band:
-            self.rubber_band.setGeometry(QRect(self.origin, QCursor.pos()).normalized())  # Use QCursor.pos() instead of globalPos()
+        if self.rubber_band and self.display_area.contains(event.pos()):
+            self.rubber_band.setGeometry(QRect(self.origin, event.pos()).normalized())
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
-            selected_geometry = QRect(self.origin, QCursor.pos())
+            selected_geometry = QRect(self.origin, event.pos())
             self.rubber_band.hide()
             self.close()
-            self.parent().process_snip(selected_geometry)
+            # Map selected_geometry to the original pixmap coordinates
+            scaled_rect = QRect(
+                selected_geometry.x() * self.pixmap.width() / self.scaled_pixmap.width(),
+                selected_geometry.y() * self.pixmap.height() / self.scaled_pixmap.height(),
+                selected_geometry.width() * self.pixmap.width() / self.scaled_pixmap.width(),
+                selected_geometry.height() * self.pixmap.height() / self.scaled_pixmap.height(),
+            )
+            self.parent.process_snip(scaled_rect)
 
 
 class RiveraApp(QMainWindow):
+    def display_full_screenshot(self, pixmap):
+        self.display_screenshot(pixmap)  # Set up display in label
+        self.snipping_tool = SnippingTool(self, pixmap)
+        self.snipping_tool.show()
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Rivera")
@@ -102,23 +119,19 @@ class RiveraApp(QMainWindow):
         self.screenshot_path = None
 
     def start_snipping(self):
-        self.welcome_label.setText("Select a screen area to read!")
-        self.snipping_tool = SnippingTool(self)
-        self.snipping_tool.set_background_screenshot()
-        self.snipping_tool.show()
+    # Capture the full screen as a pixmap
+        screen = QGuiApplication.primaryScreen()
+        self.full_pixmap = screen.grabWindow(0)  # Save the full-screen pixmap
+
+        # Display the full screenshot in the right space and start the snipping tool
+        self.display_full_screenshot(self.full_pixmap)
 
     def process_snip(self, selected_geometry):
         # Capture the selected screen area
-        screen = QGuiApplication.primaryScreen()
-        screenshot = screen.grabWindow(0, selected_geometry.x(), selected_geometry.y(),
-                                       selected_geometry.width(), selected_geometry.height())
+        screenshot = self.full_pixmap.copy(selected_geometry)
         screenshot_path = os.path.join(os.getcwd(), "selected_area.png")
         screenshot.save(screenshot_path)
-
-        # Display the screenshot on the right side
-        self.display_screenshot(screenshot_path)
-
-        # Use OCR to extract text from the screenshot
+        self.display_screenshot(screenshot)
         self.extract_text_from_image(screenshot_path)
 
     def display_screenshot(self, screenshot_path):
