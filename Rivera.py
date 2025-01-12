@@ -88,8 +88,6 @@ class SnippingTool(QWidget):
                 )
                 self.parent.process_snip(scaled_rect)
 
-
-
 class RiveraApp(QMainWindow):
     def __init__(self):
         super().__init__()
