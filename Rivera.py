@@ -30,9 +30,10 @@ class SnippingTool(QWidget):
         self.pixmap = pixmap
         self.scaled_pixmap = None
         self.display_area = QRect()
+        self.screen_geometry = QGuiApplication.primaryScreen().geometry()  # Get the current screen geometry
 
     def resizeEvent(self, event):
-        """Scale the pixmap to fit the parent label."""
+        """Scale the pixmap to fit the parent label and update display area."""
         self.scaled_pixmap = self.pixmap.scaled(
             self.parent.screenshot_label.size(), Qt.AspectRatioMode.KeepAspectRatio
         )
@@ -42,34 +43,51 @@ class SnippingTool(QWidget):
         self.resize(self.scaled_pixmap.size())
 
     def paintEvent(self, event):
-        """Draw the pixmap on the widget."""
+        """Draw the scaled pixmap on the widget."""
         if self.scaled_pixmap:
             painter = QPainter(self)
             painter.drawPixmap(self.rect(), self.scaled_pixmap)
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton and self.display_area.contains(event.position().toPoint()):
-            self.origin = event.position().toPoint()
-            self.rubber_band.setGeometry(QRect(self.origin, QSize()))
-            self.rubber_band.show()
+        if event.button() == Qt.LeftButton:
+            global_point = event.globalPosition().toPoint()
+
+            # Check if the global point is within the display area
+            if self.display_area.contains(global_point):
+                local_point = global_point - self.display_area.topLeft()
+                self.origin = local_point
+                self.rubber_band.setGeometry(QRect(self.origin, QSize()))
+                self.rubber_band.show()
 
     def mouseMoveEvent(self, event):
-        if self.rubber_band and self.display_area.contains(event.position().toPoint()):
-            self.rubber_band.setGeometry(QRect(self.origin, event.position().toPoint()).normalized())
+        if self.rubber_band:
+            global_point = event.globalPosition().toPoint()
+
+            # Ensure the point is within the display area
+            if self.display_area.contains(global_point):
+                local_point = global_point - self.display_area.topLeft()
+                self.rubber_band.setGeometry(QRect(self.origin, local_point).normalized())
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
-            selected_geometry = QRect(self.origin, event.position().toPoint())
-            self.rubber_band.hide()
-            self.close()
-            # Map selected_geometry to the original pixmap coordinates
-            scaled_rect = QRect(
-                selected_geometry.x() * self.pixmap.width() / self.scaled_pixmap.width(),
-                selected_geometry.y() * self.pixmap.height() / self.scaled_pixmap.height(),
-                selected_geometry.width() * self.pixmap.width() / self.scaled_pixmap.width(),
-                selected_geometry.height() * self.pixmap.height() / self.scaled_pixmap.height(),
-            )
-            self.parent.process_snip(scaled_rect)
+            global_point = event.globalPosition().toPoint()
+
+            # Check if the global point is within the display area
+            if self.display_area.contains(global_point):
+                local_point = global_point - self.display_area.topLeft()
+                selected_geometry = QRect(self.origin, local_point).normalized()
+                self.rubber_band.hide()
+                self.close()
+
+                # Map selected_geometry to the original pixmap coordinates
+                scaled_rect = QRect(
+                    selected_geometry.x() * self.pixmap.width() / self.scaled_pixmap.width(),
+                    selected_geometry.y() * self.pixmap.height() / self.scaled_pixmap.height(),
+                    selected_geometry.width() * self.pixmap.width() / self.scaled_pixmap.width(),
+                    selected_geometry.height() * self.pixmap.height() / self.scaled_pixmap.height(),
+                )
+                self.parent.process_snip(scaled_rect)
+
 
 
 class RiveraApp(QMainWindow):
