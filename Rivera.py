@@ -30,7 +30,6 @@ class SnippingTool(QWidget):
         self.pixmap = pixmap
         self.scaled_pixmap = None
         self.display_area = QRect()
-        self.screen_geometry = QGuiApplication.primaryScreen().geometry()  # Get the current screen geometry
 
     def resizeEvent(self, event):
         """Scale the pixmap to fit the parent label and update display area."""
@@ -52,9 +51,10 @@ class SnippingTool(QWidget):
         if event.button() == Qt.LeftButton:
             global_point = event.globalPosition().toPoint()
 
-            # Check if the global point is within the display area
+            # Adjust the global point to the display area
+            local_point = global_point - self.display_area.topLeft()
+
             if self.display_area.contains(global_point):
-                local_point = global_point - self.display_area.topLeft()
                 self.origin = local_point
                 self.rubber_band.setGeometry(QRect(self.origin, QSize()))
                 self.rubber_band.show()
@@ -63,18 +63,20 @@ class SnippingTool(QWidget):
         if self.rubber_band:
             global_point = event.globalPosition().toPoint()
 
-            # Ensure the point is within the display area
+            # Adjust the global point to the display area
+            local_point = global_point - self.display_area.topLeft()
+
             if self.display_area.contains(global_point):
-                local_point = global_point - self.display_area.topLeft()
                 self.rubber_band.setGeometry(QRect(self.origin, local_point).normalized())
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
             global_point = event.globalPosition().toPoint()
 
-            # Check if the global point is within the display area
+            # Adjust the global point to the display area
+            local_point = global_point - self.display_area.topLeft()
+
             if self.display_area.contains(global_point):
-                local_point = global_point - self.display_area.topLeft()
                 selected_geometry = QRect(self.origin, local_point).normalized()
                 self.rubber_band.hide()
                 self.close()
@@ -87,6 +89,7 @@ class SnippingTool(QWidget):
                     selected_geometry.height() * self.pixmap.height() / self.scaled_pixmap.height(),
                 )
                 self.parent.process_snip(scaled_rect)
+
 
 class RiveraApp(QMainWindow):
     def __init__(self):
